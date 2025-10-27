@@ -10,6 +10,7 @@ import {
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { frFR } from '@clerk/localizations'
+import { dark, light, neobrutalism } from '@clerk/themes'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -35,11 +36,11 @@ const localization = {
   }
 }
 
-const appearance = {
-  elements: {
-    formButtonPrimary: 'bg-slate-500 hover:bg-slate-400 text-sm',
-  },
-}
+// const appearance = {
+//   elements: {
+//     formButtonPrimary: 'bg-slate-500 hover:bg-slate-400 text-sm',
+//   },
+// }
 
 export default function RootLayout({
   children,
@@ -47,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider localization={localization} appearance={appearance}>
+    <ClerkProvider localization={localization} appearance={{baseTheme:neobrutalism}}>
       <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <header className="flex justify-end items-center p-4 gap-4 h-16">
