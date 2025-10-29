@@ -6,26 +6,33 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
-  const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
-  if (!WEBHOOK_SECRET) {
-    console.error("❌ Missing CLERK_WEBHOOK_SECRET");
-    return NextResponse.json({ error: "Missing secret" }, { status: 500 });
-  }
-
+  console.log("🪝 Webhook endpoint hit!");
   const payload = await req.text();
-  const headerPayload = headers();
-  const svix_id = headerPayload.get("svix-id");
-  const svix_timestamp = headerPayload.get("svix-timestamp");
-  const svix_signature = headerPayload.get("svix-signature");
+
+  // ✅ Await headers() (new Next.js behavior)
+  const headerData = await headers();
+
+  // 🧩 Helper to read headers in any runtime
+  const getHeader = (key: string) => {
+    if (typeof headerData.get === "function") {
+      return headerData.get(key);
+    }
+    // fallback: plain object
+    return (headerData as any)[key] || (headerData as any)[key.toLowerCase()];
+  };
+
+  const svix_id = getHeader("svix-id");
+  const svix_timestamp = getHeader("svix-timestamp");
+  const svix_signature = getHeader("svix-signature");
 
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    console.error("❌ Missing Svix headers");
-    return NextResponse.json({ error: "Missing headers" }, { status: 400 });
+    console.error("❌ Missing Svix headers", { svix_id, svix_timestamp, svix_signature });
+    return new NextResponse("Missing Svix headers", { status: 400 });
   }
 
-  const wh = new Webhook(WEBHOOK_SECRET);
-  let evt: any;
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
 
+  let evt;
   try {
     evt = wh.verify(payload, {
       "svix-id": svix_id,
@@ -33,31 +40,26 @@ export async function POST(req: Request) {
       "svix-signature": svix_signature,
     });
   } catch (err) {
-    console.error("❌ Verification failed", err);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    console.error("❌ Error verifying webhook:", err);
+    return new NextResponse("Invalid signature", { status: 400 });
   }
 
-  console.log("✅ Event received:", evt.type);
-  console.log("🧾 Event data:", JSON.stringify(evt.data, null, 2));
+  const { id, email_addresses } = evt.data as any;
+  const email = email_addresses?.[0]?.email_address || "unknown@example.com";
 
-  if (evt.type === "user.created") {
-    const { id, email_addresses } = evt.data;
-    const email = email_addresses?.[0]?.email_address || null;
-
-    console.log("📨 Inserting user:", { id, email });
-
-    try {
-      await prisma.user.create({
-        data: {
-          clerkId: id,
-          email: email || "unknown@noemail.com",
-        },
-      });
-      console.log("✅ User inserted successfully!");
-    } catch (error) {
-      console.error("❌ Prisma insert failed:", error);
-    }
+  try {
+    await prisma.user.create({
+      data: {
+        clerkId: id,
+        email,
+      },
+    });
+    console.log(`✅ User inserted: ${id} (${email})`);
+  } catch (err) {
+    console.error("❌ Database error:", err);
+    return new NextResponse("Database error", { status: 500 });
   }
-
-  return NextResponse.json({ success: true }, { status: 200 });
+  
+  console.log("✅ Webhook verified and handled successfully");
+  return NextResponse.json({ success: true });
 }
